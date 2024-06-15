@@ -10,12 +10,16 @@ GPIO_SERVO_FREQ = 50
 GPIO_SERVO_OPEN = 9
 GPIO_SERVO_CLOSE = 15
 
-SERVO_OPEN_TIME = 1.5
+servoOpenTime = 1.5
+
+TIMER_MIN_INTERVAL = 10
+TIMER_MAX_INTERVAL = 60 * 60
 
 BLYNK_OPERATION_MODE_VPIN = 0
 BLYNK_MANUAL_FEED_VPIN = 1
 BLYNK_MORNING_HOUR_VPIN = 2
 BLYNK_EVENING_HOUR_VPIN = 3
+BLYNK_FEED_RATE_VPIN = 4
 
 operationMode = 'manual'
 morningScheduleHour = 0
@@ -31,7 +35,7 @@ def initialize_gpio():
 
 def run_feed_procedure():
     servoControl.ChangeDutyCycle(GPIO_SERVO_OPEN)   
-    sleep(SERVO_OPEN_TIME)             
+    sleep(servoOpenTime)             
     servoControl.ChangeDutyCycle(GPIO_SERVO_CLOSE) 
     sleep(1)
     servoControl.ChangeDutyCycle(0)
@@ -58,10 +62,9 @@ def check_feed_schedule():
     run_feed_procedure()
     hasFed = True
     
-  createTimer(60 * 60 if hasFed else 5)
+  createTimer(TIMER_MAX_INTERVAL if hasFed else TIMER_MIN_INTERVAL)
     
-
-def createTimer(sleepTime = 5):
+def createTimer(sleepTime = TIMER_MIN_INTERVAL):
   print('Create feed timer in {} seconds'.format(sleepTime))
   global feedTimer
   
@@ -86,6 +89,7 @@ def blynk_connected():
         BLYNK_OPERATION_MODE_VPIN,
         BLYNK_MORNING_HOUR_VPIN,
         BLYNK_EVENING_HOUR_VPIN,
+        BLYNK_FEED_RATE_VPIN
     )
 
 # Tells Blynk to call the below function when a new value is written for this virtul pin
@@ -112,25 +116,32 @@ def on_manual_feed(value):
 def on_morning_schedule_change(value):   
     global morningScheduleHour
     morningScheduleHour = int(value[0])
-    clearTimer()
-    createTimer()
+    if operationMode == 'automatic':
+      clearTimer()
+      createTimer()
 
 @blynk.VIRTUAL_WRITE(BLYNK_EVENING_HOUR_VPIN)
 def on_evening_schedule_change(value):   
     global eveningScheduleHour
     eveningScheduleHour = int(value[0])
-    clearTimer()
-    createTimer()
+    if operationMode == 'automatic':
+      clearTimer()
+      createTimer()
+    
+@blynk.VIRTUAL_WRITE(BLYNK_FEED_RATE_VPIN)
+def on_feed_rate_change(value):   
+  global servoOpenTime
+  
+  servoOpenTime = int(value[0]) * 0.5
+  
+  print('servoOpenTime changed to {}'.format(servoOpenTime))
 
-# async def main():
 try:
   while True:
     blynk.run()
-except err:
+except:
   print("An exception occurred. Shutting down ...") 
-  print(err)
   servoControl.stop()         
   GPIO.cleanup() 
+  clearTimer()
 
-# if __name__ == "__main__":
-    # asyncio.run(main())
